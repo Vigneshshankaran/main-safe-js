@@ -121,6 +121,22 @@ const formatDiscountLive = (input) => {
 
 window.formatDiscountLive = formatDiscountLive;
 
+const formatOptionPoolLive = (input) => {
+    let value = input.value;
+    let digits = value.replace(/\D/g, "");
+    if (digits.length > 2) {
+        digits = digits.slice(0, 2);
+    }
+    let num = parseInt(digits) || 0;
+    if (num > 99) {
+        num = 99;
+        digits = "99";
+    }
+    input.value = digits === "" ? "" : num.toString();
+};
+
+window.formatOptionPoolLive = formatOptionPoolLive;
+
 const roundShares = (num, strategy = DEFAULT_ROUNDING_STRATEGY) => {
     if (strategy.roundDownShares) return Math.floor(num);
     if (strategy.roundShares) return Math.round(num);
@@ -1722,238 +1738,9 @@ window.hideEmailModal = function() {
     if (modal) modal.style.display = 'none';
 };
 
-const normalizeForCapture = (element) => {
-    const original = {
-        position: element.style.position,
-        top: element.style.top,
-        height: element.style.height,
-        maxHeight: element.style.maxHeight,
-        overflow: element.style.overflow,
-        overflowY: element.style.overflowY,
-        width: element.style.width,
-        boxShadow: element.style.boxShadow,
-        borderRadius: element.style.borderRadius
-    };
 
-    const elementsToHide = element.querySelectorAll('.no-pdf, button, .btn-trash, .row-trash-btn');
-    elementsToHide.forEach(el => {
-        el.setAttribute('data-original-display', el.style.display || '');
-        el.style.display = 'none';
-    });
-    
-    element.style.position = 'static';
-    element.style.top = 'auto';
-    element.style.height = 'auto';
-    element.style.maxHeight = 'none';
-    element.style.overflow = 'visible';
-    element.style.overflowY = 'visible';
-    element.style.width = '100%';
-    element.style.boxShadow = 'none';
-    element.style.borderRadius = '0';
-    
-    return original;
-};
 
-const restoreAfterCapture = (element, original) => {
-    const elementsToRestore = element.querySelectorAll('.no-pdf, button, .btn-trash, .row-trash-btn');
-    elementsToRestore.forEach(el => {
-        el.style.display = el.getAttribute('data-original-display') || '';
-        el.removeAttribute('data-original-display');
-    });
 
-    Object.assign(element.style, original);
-};
-
-const checkPDFDependencies = () => {
-    const hasJsPDF = !!(window.jspdf && window.jspdf.jsPDF);
-    const hasHtml2Canvas = !!window.html2canvas;
-
-    if (!hasJsPDF) {
-        alert("Pdf download failed: jsPDF library not found. Please ensure the jsPDF script is included in your Webflow page settings.");
-        console.error("Dependency Missing: jsPDF");
-    }
-    if (!hasHtml2Canvas) {
-        alert("Pdf download failed: html2canvas library not found. Please ensure the html2canvas script is included in your Webflow page settings.");
-        console.error("Dependency Missing: html2canvas");
-    }
-    return hasJsPDF && hasHtml2Canvas;
-};
-
-async function generateCombinedPDF(quality = 0.8, scale = 1.5) {
-    if (!checkPDFDependencies()) return null;
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('p', 'mm', 'a4');
-    
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
-    const contentWidth = pageWidth - (margin * 2);
-    let yPos = margin;
-    
-    const primaryNavy = '#0d0a40';
-    const textMuted = '#444266';
-    
-    doc.setFontSize(20);
-    doc.setTextColor(primaryNavy);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Calculator Inputs', margin, yPos);
-    yPos += 8;
-    
-    doc.setFontSize(8);
-    doc.setTextColor(textMuted);
-    doc.setFont('helvetica', 'normal');
-    const timestamp = new Date().toLocaleString('en-US', {
-        year: 'numeric', month: 'long', day: 'numeric',
-        hour: '2-digit', minute: '2-digit'
-    });
-    doc.text(`Generated on ${timestamp}`, margin, yPos);
-    yPos += 10;
-
-    const inputConfigs = [
-        { id: 'cap-table-section', bodyId: 'shareholders-body', footerId: 'cap-table-footer' },
-        { id: 'safes-section', bodyId: 'safes-body', footerId: null },
-        { id: 'priced-round-section', bodyId: null, footerId: null, skipFooter: true }
-    ];
-
-    for (const config of inputConfigs) {
-        const section = document.getElementById(config.id);
-        if (!section) continue;
-
-        const header = section.querySelector('.card-header');
-        if (header) {
-            const hStyles = normalizeForCapture(header);
-            const hCanvas = await html2canvas(header, { backgroundColor: '#ffffff', scale: scale });
-            restoreAfterCapture(header, hStyles);
-            const hHeight = (hCanvas.height * contentWidth) / hCanvas.width;
-            if (yPos + hHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-            doc.addImage(hCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, hHeight);
-            yPos += hHeight + 2;
-        }
-
-        if (config.bodyId) {
-            const body = document.getElementById(config.bodyId);
-            if (body) {
-                for (let row of body.children) {
-                    const rStyles = normalizeForCapture(row);
-                    const rCanvas = await html2canvas(row, { backgroundColor: '#ffffff', scale: scale });
-                    restoreAfterCapture(row, rStyles);
-                    const rHeight = (rCanvas.height * contentWidth) / rCanvas.width;
-                    if (yPos + rHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-                    doc.addImage(rCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, rHeight);
-                    yPos += rHeight + 2;
-                }
-            }
-        } else if (config.id === 'priced-round-section') {
-            const children = Array.from(section.children).filter(child => !child.classList.contains('card-header'));
-            
-            for (const child of children) {
-                const cStyles = normalizeForCapture(child);
-                const cCanvas = await html2canvas(child, { backgroundColor: '#ffffff', scale: scale });
-                restoreAfterCapture(child, cStyles);
-                const cHeight = (cCanvas.height * contentWidth) / cCanvas.width;
-                if (yPos + cHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-                doc.addImage(cCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, cHeight);
-                yPos += cHeight + 2;
-            }
-        }
-
-        if (!config.skipFooter) {
-            const footer = config.footerId ? document.getElementById(config.footerId) : section.querySelector('.card-footer-total');
-            if (footer) {
-                const fStyles = normalizeForCapture(footer);
-                const fCanvas = await html2canvas(footer, { backgroundColor: '#ffffff', scale: scale });
-                restoreAfterCapture(footer, fStyles);
-                const fHeight = (fCanvas.height * contentWidth) / fCanvas.width;
-                if (yPos + fHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-                doc.addImage(fCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, fHeight);
-                yPos += fHeight + 10;
-            }
-        } else {
-            yPos += 8;
-        }
-    }
-    
-    doc.addPage();
-    yPos = margin;
-
-    doc.setFontSize(20); doc.setTextColor(primaryNavy); doc.setFont('helvetica', 'bold');
-    doc.text('SAFE Calculator Results', margin, yPos);
-    yPos += 8;
-    
-    doc.setFontSize(8); doc.setTextColor(textMuted); doc.setFont('helvetica', 'normal');
-    doc.text(`Generated on ${timestamp}`, margin, yPos);
-    yPos += 10;
-    
-    const resultsCard = document.getElementById('results-card');
-    if (resultsCard) {
-        const cStyles = normalizeForCapture(resultsCard);
-        const cCanvas = await html2canvas(resultsCard, { backgroundColor: '#ffffff', scale: scale });
-        restoreAfterCapture(resultsCard, cStyles);
-        const cHeight = (cCanvas.height * contentWidth) / cCanvas.width;
-        if (yPos + cHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-        doc.addImage(cCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, cHeight);
-        yPos += cHeight + 10;
-    }
-
-    const aiAdvisor = document.getElementById('ai-advisor-section');
-    if (aiAdvisor) {
-        const hStyles = normalizeForCapture(aiAdvisor);
-        const hCanvas = await html2canvas(aiAdvisor, { backgroundColor: '#ffffff', scale: scale });
-        restoreAfterCapture(aiAdvisor, hStyles);
-        const hHeight = (hCanvas.height * contentWidth) / hCanvas.width;
-        if (yPos + hHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-        doc.addImage(hCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, hHeight);
-        yPos += hHeight + 10;
-    }
-
-    const breakdown = document.getElementById('breakdown-section');
-    if (breakdown) {
-        const title = breakdown.querySelector('.subsection-title');
-        if (title) {
-            const tStyles = normalizeForCapture(title);
-            const tCanvas = await html2canvas(title, { backgroundColor: '#ffffff', scale: scale });
-            restoreAfterCapture(title, tStyles);
-            const tHeight = (tCanvas.height * contentWidth) / tCanvas.width;
-            if (yPos + tHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-            doc.addImage(tCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, tHeight);
-            yPos += tHeight + 2;
-        }
-
-        const table = breakdown.querySelector('table');
-        if (table) {
-            const thead = table.querySelector('thead');
-            if (thead) {
-                const thStyles = normalizeForCapture(thead);
-                const thCanvas = await html2canvas(thead, { backgroundColor: '#ffffff', scale: scale });
-                restoreAfterCapture(thead, thStyles);
-                const thHeight = (thCanvas.height * contentWidth) / thCanvas.width;
-                if (yPos + thHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-                doc.addImage(thCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, thHeight);
-                yPos += thHeight;
-            }
-
-            const tbody = table.querySelector('tbody');
-            if (tbody) {
-                for (let row of tbody.children) {
-                    const rCanvas = await html2canvas(row, { backgroundColor: '#ffffff', scale: scale });
-                    const rHeight = (rCanvas.height * contentWidth) / rCanvas.width;
-                    if (yPos + rHeight > pageHeight - margin) { doc.addPage(); yPos = margin; }
-                    doc.addImage(rCanvas.toDataURL('image/jpeg', quality), 'JPEG', margin, yPos, contentWidth, rHeight);
-                    yPos += rHeight;
-                }
-            }
-        }
-    }
-    
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(7);
-        doc.setTextColor('#9ca3af');
-        doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
-    }
-    return doc;
-}
 
 const prepareReportData = () => {
     const timestamp = new Date().toLocaleString('en-US', {
@@ -1984,7 +1771,7 @@ const prepareReportData = () => {
     // SNAPSHOT 3: POST-ROUND
     // =========================================================================
     const rawSafes = state.rowData.filter(r => r.type === CapTableRowType.Safe);
-    const populatedSafes = populateSafeCaps(rawSafes);
+    const populatedSafes = populateSafeCaps(rawSafes, state.preMoney);
     const seriesInvs = state.rowData
         .filter(r => r.type === CapTableRowType.Series)
         .map(r => r.investment);
@@ -2015,16 +1802,23 @@ const prepareReportData = () => {
                             preRound.safes.reduce((a, s) => a + (s.shares || 0), 0);
 
     const rows = [
-        ...pricedTable.common.map(r => ({
-            name: r.name,
-            preShares: preRound.common.find(pr => pr.id === r.id)?.shares || r.shares,
-            postShares: r.shares,
-            badge: null,
-            isFounder: r.category === "Founder",
-            isSafe: false,
-            isInvestor: false
-        })),
+        ...pricedTable.common.map(r => {
+            const preRow = preRound.common.find(pr => pr.id === r.id);
+            return {
+                name: r.name,
+                preShares: preRow?.shares || r.shares,
+                postShares: r.shares,
+                ownershipPre: safeFormatPercent(preRow?.ownershipPct),
+                ownershipPost: safeFormatPercent(r.ownershipPct),
+                badge: null,
+                isFounder: r.category === "Founder",
+                isSafe: false,
+                isInvestor: false,
+                pricePerShare: safeFormatPPS(r.pps)
+            };
+        }),
         ...pricedTable.safes.map(r => {
+            const preRow = preRound.safes.find(ps => ps.id === r.id);
             let badge = null;
             let badgeStyle = "";
             const safeMatch = populatedSafes.find(s => s.id === r.id);
@@ -2042,8 +1836,10 @@ const prepareReportData = () => {
             
             return {
                 name: r.name,
-                preShares: preRound.safes.find(ps => ps.id === r.id)?.shares || 0,
+                preShares: preRow?.shares || 0,
                 postShares: r.shares,
+                ownershipPre: safeFormatPercent(preRow?.ownershipPct),
+                ownershipPost: safeFormatPercent(r.ownershipPct),
                 badge: badge,
                 badgeStyle: badgeStyle,
                 isFounder: false,
@@ -2052,19 +1848,23 @@ const prepareReportData = () => {
                 investment: r.investment,
                 cap: safeMatch?.cap || 0,
                 discount: r.discount ? (r.discount * 100).toFixed(0) + "%" : "None",
-                type: r.conversionType === "mfn" ? "MFN-money" : (r.conversionType ? r.conversionType.charAt(0).toUpperCase() + r.conversionType.slice(1) + "-money" : "N/A")
+                type: r.conversionType === "mfn" ? "MFN-money" : (r.conversionType ? r.conversionType.charAt(0).toUpperCase() + r.conversionType.slice(1) + "-money" : "N/A"),
+                pricePerShare: safeFormatPPS(r.pps)
             };
         }),
         ...pricedTable.series.map(r => ({
             name: r.name,
             preShares: 0,
             postShares: r.shares,
+            ownershipPre: safeFormatPercent(0),
+            ownershipPost: safeFormatPercent(r.ownershipPct),
             badge: null,
             badgeStyle: "",
             isFounder: false,
             isSafe: false,
             isInvestor: true,
-            investment: r.investment
+            investment: r.investment,
+            pricePerShare: safeFormatPPS(r.pps)
         }))
     ];
 
@@ -2084,11 +1884,14 @@ const prepareReportData = () => {
             name: "Option pool",
             preShares: preOptions,
             postShares: postOptions,
+            ownershipPre: safeFormatPercent(preRound.total.shares > 0 ? preOptions / preRound.total.shares : 0),
+            ownershipPost: safeFormatPercent(pricedTable.total.shares > 0 ? postOptions / pricedTable.total.shares : 0),
             badge: badge,
             badgeStyle: badgeStyle,
             isFounder: false,
             isSafe: false,
-            isInvestor: false
+            isInvestor: false,
+            pricePerShare: safeFormatPPS(undefined)
         });
     }
 
@@ -2099,6 +1902,13 @@ const prepareReportData = () => {
     const totalFounderPctPre = commonSharesTotalPre > 0 ? founderSharesPre / commonSharesTotalPre : 0;
     const ownershipPre = safeFormatPercent(totalFounderPctPre);
 
+    const foundersPost = pricedTable.common.filter((c) => c.category === "Founder");
+    const totalFounderPctPost = foundersPost.reduce((a, f) => a + f.ownershipPct, 0);
+    const ownershipPost = safeFormatPercent(totalFounderPctPost);
+
+    const totalPostShares = pricedTable.total.shares;
+    const postMoneyValue = totalPostShares * pricedConversion.pps;
+
     return {
         valuation: state.preMoney,
         raised: totalRaisedVal,
@@ -2108,11 +1918,11 @@ const prepareReportData = () => {
         roundName: state.roundName || "priced round",
         summary: {
             ownershipPre: ownershipPre,
-            ownershipPost: founderOwnership,
-            dilution: founderDilution,
-            postMoney: postMoney,
-            pricePerShare: getVal('round-pps-val'),
-            totalShares: getVal('total-post-shares-val'),
+            ownershipPost: ownershipPost,
+            dilution: isNaN(totalFounderPctPre - totalFounderPctPost) ? "0.00%" : safeFormatPercent(totalFounderPctPre - totalFounderPctPost),
+            postMoney: safeFormatCurrency(postMoneyValue),
+            pricePerShare: safeFormatPPS(pricedConversion.pps),
+            totalShares: safeFormatNumber(totalPostShares),
             totalRaised: totalRaised
         },
         rows: rows
